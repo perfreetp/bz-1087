@@ -252,7 +252,7 @@ export default function Profile() {
             <OrderIcon
               icon={<Star className="w-6 h-6" />}
               label="待评价"
-              count={0}
+              count={myOrders.filter((o) => o.status === 'completed' && !o.isReviewed).length}
               onClick={() => navigate('/orders?status=completed')}
             />
           </div>

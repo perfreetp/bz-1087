@@ -26,8 +26,8 @@ interface UserState {
 
 export const useUserStore = create<UserState>((set, get) => ({
   currentUser: getStorageItem<User | null>('currentUser', mockUsers.find((u) => u.id === currentUserId) || null),
-  users: mockUsers,
-  reviews: mockReviews,
+  users: getStorageItem('users', mockUsers),
+  reviews: getStorageItem('reviews', mockReviews),
   wishlist: getStorageItem('wishlist', mockWishlist),
 
   setCurrentUser: (user) => {
@@ -90,7 +90,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   addReview: (params) => {
     const currentUser = get().currentUser;
-    const { getOrderById } = useOrderStore.getState();
+    const { getOrderById, reviewOrder } = useOrderStore.getState();
     const order = getOrderById(params.orderId);
 
     if (!currentUser || !order) return;
@@ -116,9 +116,6 @@ export const useUserStore = create<UserState>((set, get) => ({
       const users = state.users.map((u) => {
         if (u.id === params.targetUserId) {
           const userReviews = reviews.filter((r) => r.revieweeId === u.id);
-          const avgRating = userReviews.length > 0
-            ? userReviews.reduce((sum, r) => sum + r.rating, 0) / userReviews.length
-            : 5;
           return {
             ...u,
             reviewCount: u.reviewCount + 1,
@@ -129,7 +126,10 @@ export const useUserStore = create<UserState>((set, get) => ({
       });
 
       setStorageItem('reviews', reviews);
+      setStorageItem('users', users);
       return { reviews, users };
     });
+
+    reviewOrder(params.orderId);
   },
 }));

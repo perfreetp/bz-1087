@@ -59,6 +59,8 @@ export interface Order {
   deliveredAt?: string;
   completedAt?: string;
   cancelledAt?: string;
+  isReviewed?: boolean;
+  reviewedAt?: string;
 }
 
 export interface Refund {

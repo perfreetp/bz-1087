@@ -64,6 +64,12 @@ export default function Chat() {
 
   const handleAcceptOffer = (messageId: string) => {
     respondToOffer(messageId, true);
+    const message = messages.find((m) => m.id === messageId);
+    if (message && currentChat && message.offerPrice !== undefined) {
+      navigate(
+        `/orders/confirm?productId=${currentChat.productId}&chatId=${currentChat.id}&price=${message.offerPrice}`
+      );
+    }
   };
 
   const handleRejectOffer = (messageId: string) => {
@@ -79,6 +85,14 @@ export default function Chat() {
   const handleCreateOrder = () => {
     if (currentChat) {
       navigate(`/orders/confirm?productId=${currentChat.productId}&chatId=${currentChat.id}`);
+    }
+  };
+
+  const handleBuyWithOffer = (price: number) => {
+    if (currentChat) {
+      navigate(
+        `/orders/confirm?productId=${currentChat.productId}&chatId=${currentChat.id}&price=${price}`
+      );
     }
   };
 
@@ -245,6 +259,7 @@ export default function Chat() {
               }
               onAccept={handleAcceptOffer}
               onReject={handleRejectOffer}
+              onBuyWithOffer={handleBuyWithOffer}
             />
           ))
         )}
@@ -379,6 +394,7 @@ function MessageItem({
   senderAvatar,
   onAccept,
   onReject,
+  onBuyWithOffer,
 }: {
   message: Message;
   isMine: boolean;
@@ -386,6 +402,7 @@ function MessageItem({
   senderAvatar: string;
   onAccept: (messageId: string) => void;
   onReject: (messageId: string) => void;
+  onBuyWithOffer: (price: number) => void;
 }) {
   if (message.type === 'system') {
     return (
@@ -455,6 +472,32 @@ function MessageItem({
                 className="flex-1 py-2.5 text-primary-500 text-sm font-medium hover:bg-primary-50 border-l"
               >
                 接受
+              </button>
+            </div>
+          )}
+
+          {/* 议价已接受，显示去下单按钮 */}
+          {isMine && message.offerStatus === 'accepted' && message.offerPrice !== undefined && (
+            <div className="border-t border-white/20">
+              <button
+                onClick={() => onBuyWithOffer(message.offerPrice!)}
+                className="w-full py-2.5 text-white text-sm font-medium hover:bg-white/10 flex items-center justify-center gap-1"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                用此价下单
+              </button>
+            </div>
+          )}
+
+          {/* 议价已接受（卖家视角），显示去下单按钮 */}
+          {!isMine && message.offerStatus === 'accepted' && message.offerPrice !== undefined && (
+            <div className="border-t">
+              <button
+                onClick={() => onBuyWithOffer(message.offerPrice!)}
+                className="w-full py-2.5 text-primary-500 text-sm font-medium hover:bg-primary-50 flex items-center justify-center gap-1"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                用此价下单
               </button>
             </div>
           )}

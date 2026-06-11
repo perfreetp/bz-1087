@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   ChevronLeft,
   AlertTriangle,
@@ -30,7 +30,7 @@ import {
   type ReportTargetType,
 } from '@/types';
 import { pickupPoints, platformRules } from '@/data/reports';
-import { formatDistance, formatRelativeTime } from '@/utils/format';
+import { formatDistance, formatRelativeTime, formatPrice, formatDateTime } from '@/utils/format';
 
 export default function Report() {
   const navigate = useNavigate();
@@ -54,6 +54,12 @@ export default function Report() {
   // 处理进度页面
   if (section === 'progress') {
     return <ProgressPage onBack={() => navigate('/report')} />;
+  }
+
+  // 举报详情页面
+  if (section === 'detail') {
+    const reportId = searchParams.get('id') || '';
+    return <ReportDetailPage reportId={reportId} onBack={() => navigate(-1)} />;
   }
 
   // 主页面
@@ -504,6 +510,7 @@ function ReportSubmitPage({
 
 // 处理进度页面
 function ProgressPage({ onBack }: { onBack: () => void }) {
+  const navigate = useNavigate();
   const { getReports } = useReportStore();
   const reports = getReports();
 
@@ -531,9 +538,10 @@ function ProgressPage({ onBack }: { onBack: () => void }) {
         ) : (
           <div className="space-y-4">
             {reports.map((report) => (
-              <div
+              <button
                 key={report.id}
-                className="bg-white rounded-2xl p-4"
+                onClick={() => navigate(`/report/detail?id=${report.id}`)}
+                className="w-full bg-white rounded-2xl p-4 text-left hover:bg-gray-50 transition-colors"
               >
                 {/* 头部 */}
                 <div className="flex items-center justify-between mb-3">
@@ -614,8 +622,231 @@ function ProgressPage({ onBack }: { onBack: () => void }) {
                     </div>
                   )}
                 </div>
-              </div>
+              </button>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 举报详情页面
+function ReportDetailPage({ reportId, onBack }: { reportId: string; onBack: () => void }) {
+  const navigate = useNavigate();
+  const { getReportById } = useReportStore();
+  const { getProductById } = useProductStore();
+
+  const report = getReportById(reportId);
+  const product = report?.targetType === 'product' ? getProductById(report.targetId) : undefined;
+
+  if (!report) {
+    return (
+      <div className="min-h-screen bg-warm-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">举报记录不存在</p>
+          <button onClick={onBack} className="text-primary-500">
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const timeline = [
+    { key: 'submitted', label: '提交举报', time: report.createdAt, done: true },
+    { key: 'processing', label: '平台受理', time: report.handledAt, done: report.status !== 'pending' },
+    { key: 'completed', label: '处理完成', time: report.handledAt, done: report.status === 'resolved' || report.status === 'rejected' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-warm-50 pb-20">
+      {/* 顶部 */}
+      <div className="sticky top-0 z-40 bg-white border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={onBack}
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="font-bold text-lg">举报详情</h1>
+          <div className="w-10" />
+        </div>
+      </div>
+
+      <div className="container py-4 space-y-4">
+        {/* 状态卡片 */}
+        <div className={`rounded-2xl p-5 text-white ${
+          report.status === 'resolved'
+            ? 'bg-gradient-to-r from-green-500 to-teal-500'
+            : report.status === 'rejected'
+            ? 'bg-gradient-to-r from-gray-500 to-gray-600'
+            : 'bg-gradient-to-r from-orange-500 to-amber-500'
+        }`}>
+          <div className="flex items-center gap-3 mb-2">
+            {report.status === 'resolved' ? (
+              <CheckCircle className="w-8 h-8" />
+            ) : report.status === 'rejected' ? (
+              <XCircle className="w-8 h-8" />
+            ) : (
+              <Clock className="w-8 h-8" />
+            )}
+            <div>
+              <h2 className="text-xl font-bold">
+                {reportStatusLabels[report.status]}
+              </h2>
+              <p className="text-sm text-white/80">
+                {report.status === 'pending' && '我们已收到您的举报，正在排队处理'}
+                {report.status === 'processing' && '工作人员正在核实相关信息'}
+                {report.status === 'resolved' && '举报已核实，已进行相应处理'}
+                {report.status === 'rejected' && '经核实，举报内容不成立'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 关联商品 */}
+        {product && (
+          <div className="bg-white rounded-2xl p-4">
+            <h3 className="font-medium text-gray-800 mb-3">举报的商品</h3>
+            <Link
+              to={`/product/${product.id}`}
+              className="flex gap-3"
+            >
+              <img
+                src={product.images[0]}
+                alt={product.title}
+                className="w-20 h-20 rounded-lg object-cover"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 line-clamp-2">
+                  {product.title}
+                </p>
+                <p className="text-primary-500 font-bold mt-2">
+                  {formatPrice(product.price)}
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 self-center" />
+            </Link>
+          </div>
+        )}
+
+        {/* 举报信息 */}
+        <div className="bg-white rounded-2xl p-4">
+          <h3 className="font-medium text-gray-800 mb-4">举报信息</h3>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                report.type === 'dangerous_toy'
+                  ? 'bg-red-100'
+                  : report.type === 'counterfeit'
+                  ? 'bg-orange-100'
+                  : report.type === 'fraud'
+                  ? 'bg-purple-100'
+                  : 'bg-gray-100'
+              }`}>
+                <AlertTriangle className={`w-5 h-5 ${
+                  report.type === 'dangerous_toy'
+                    ? 'text-red-500'
+                    : report.type === 'counterfeit'
+                    ? 'text-orange-500'
+                    : report.type === 'fraud'
+                    ? 'text-purple-500'
+                    : 'text-gray-500'
+                }`} />
+              </div>
+              <div>
+                <p className="font-medium text-gray-800">
+                  {reportTypeLabels[report.type as ReportType]}
+                </p>
+                <p className="text-xs text-gray-400">举报类型</p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t">
+              <p className="text-sm text-gray-500 mb-2">详细描述</p>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {report.description}
+              </p>
+            </div>
+
+            {report.evidence && report.evidence.length > 0 && (
+              <div className="pt-3 border-t">
+                <p className="text-sm text-gray-500 mb-3">凭证图片</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {report.evidence.map((img, index) => (
+                    <img
+                      key={index}
+                      src={img}
+                      alt=""
+                      className="w-full aspect-square rounded-lg object-cover"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 处理进度 */}
+        <div className="bg-white rounded-2xl p-4">
+          <h3 className="font-medium text-gray-800 mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary-500" />
+            处理进度
+          </h3>
+          <div className="relative pl-2 space-y-4">
+            {timeline.map((item, index) => {
+              const isLast = index === timeline.length - 1 && item.done;
+              return (
+                <div key={item.key} className="relative flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                        item.done ? 'bg-primary-500' : 'bg-gray-300'
+                      }`}
+                    />
+                    {index < timeline.length - 1 && (
+                      <div className={`w-0.5 flex-1 my-1 ${
+                        item.done ? 'bg-primary-200' : 'bg-gray-200'
+                      }`} />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-2">
+                    <p
+                      className={`text-sm font-medium ${
+                        isLast ? 'text-primary-600' : item.done ? 'text-gray-700' : 'text-gray-400'
+                      }`}
+                    >
+                      {item.label}
+                    </p>
+                    {item.time && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatDateTime(item.time)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 处理结果 */}
+        {(report.status === 'resolved' || report.status === 'rejected') && report.handlerReply && (
+          <div className={`rounded-2xl p-4 ${
+            report.status === 'resolved' ? 'bg-green-50 border border-green-100' : 'bg-gray-50 border border-gray-200'
+          }`}>
+            <h3 className={`font-medium mb-2 ${
+              report.status === 'resolved' ? 'text-green-700' : 'text-gray-700'
+            }`}>
+              平台处理结果
+            </h3>
+            <p className={`text-sm leading-relaxed ${
+              report.status === 'resolved' ? 'text-green-600' : 'text-gray-600'
+            }`}>
+              {report.handlerReply}
+            </p>
           </div>
         )}
       </div>

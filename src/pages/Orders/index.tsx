@@ -317,12 +317,18 @@ export default function Orders() {
                       >
                         申请退款
                       </button>
-                      <button
-                        onClick={() => handleReview(order.id)}
-                        className="px-4 py-1.5 bg-secondary-500 text-white rounded-full text-sm"
-                      >
-                        去评价
-                      </button>
+                      {order.isReviewed ? (
+                        <span className="px-4 py-1.5 text-gray-400 text-sm">
+                          已评价
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleReview(order.id)}
+                          className="px-4 py-1.5 bg-secondary-500 text-white rounded-full text-sm"
+                        >
+                          去评价
+                        </button>
+                      )}
                     </>
                   )}
 
@@ -446,6 +452,14 @@ export default function Orders() {
 function OrderDetail({ order, onBack }: { order: any; onBack: () => void }) {
   const navigate = useNavigate();
 
+  const timeline = [
+    { key: 'created', label: '下单成功', time: order.createdAt, icon: Clock, done: true },
+    { key: 'paid', label: '付款成功', time: order.paidAt, icon: CheckCircle, done: !!order.paidAt },
+    { key: 'shipped', label: '卖家发货', time: order.shippedAt, icon: Package, done: !!order.shippedAt },
+    { key: 'delivered', label: '确认收货', time: order.deliveredAt || order.completedAt, icon: MapPin, done: order.status === 'completed' || order.status === 'delivered' },
+    { key: 'reviewed', label: '完成评价', time: order.reviewedAt, icon: Star, done: !!order.isReviewed },
+  ].filter((item) => item.done);
+
   return (
     <div className="min-h-screen bg-warm-50 pb-20">
       {/* 顶部 */}
@@ -495,6 +509,54 @@ function OrderDetail({ order, onBack }: { order: any; onBack: () => void }) {
       </div>
 
       <div className="container -mt-2">
+        {/* 交易时间线 */}
+        <div className="bg-white rounded-2xl p-4 mb-4">
+          <h3 className="font-medium text-gray-800 mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary-500" />
+            交易进度
+          </h3>
+          <div className="relative pl-2 space-y-4">
+            {timeline.map((item, index) => {
+              const Icon = item.icon;
+              const isLast = index === timeline.length - 1;
+              return (
+                <div key={item.key} className="relative flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isLast ? 'bg-primary-100' : 'bg-gray-100'
+                      }`}
+                    >
+                      <Icon
+                        className={`w-4 h-4 ${
+                          isLast ? 'text-primary-500' : 'text-gray-400'
+                        }`}
+                      />
+                    </div>
+                    {!isLast && (
+                      <div className="w-0.5 flex-1 bg-gray-200 my-1" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-2">
+                    <p
+                      className={`font-medium ${
+                        isLast ? 'text-gray-800' : 'text-gray-500'
+                      }`}
+                    >
+                      {item.label}
+                    </p>
+                    {item.time && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatDateTime(item.time)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 物流信息 */}
         {order.logistics && (
           <div className="bg-white rounded-2xl p-4 mb-4">

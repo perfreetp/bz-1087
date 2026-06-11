@@ -31,6 +31,7 @@ interface OrderState {
   applyRefund: (orderId: string, reason: string, description: string) => void;
   getRefunds: () => Refund[];
   getRefundById: (id: string) => Refund | undefined;
+  reviewOrder: (orderId: string) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => ({
@@ -202,5 +203,17 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
   getRefundById: (id) => {
     return get().refunds.find((r) => r.id === id);
+  },
+
+  reviewOrder: (orderId) => {
+    set((state) => {
+      const orders = state.orders.map((o) =>
+        o.id === orderId
+          ? { ...o, isReviewed: true, reviewedAt: new Date().toISOString() }
+          : o
+      );
+      setStorageItem('orders', orders);
+      return { orders };
+    });
   },
 }));
