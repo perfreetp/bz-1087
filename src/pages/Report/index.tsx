@@ -48,7 +48,24 @@ export default function Report() {
 
   // 举报提交页面
   if (section === 'submit') {
-    return <ReportSubmitPage onBack={() => navigate(-1)} targetType={targetType || 'product'} targetId={targetId} />;
+    // 如果是举报商品且有商品ID，检查是否已有举报记录
+    if (targetType === 'product' && targetId) {
+      const existingReports = reports.filter(
+        (r: any) => r.targetType === 'product' && r.targetId === targetId
+      );
+      if (existingReports.length > 0) {
+        return (
+          <ReportProductRecordsPage
+            productId={targetId}
+            reports={existingReports}
+            onBack={() => navigate(-1)}
+            onNewReport={() => navigate(`/report/submit?type=product&id=${targetId}&force=1`)}
+          />
+        );
+      }
+    }
+    const forceNew = searchParams.get('force') === '1';
+    return <ReportSubmitPage onBack={() => navigate(-1)} targetType={targetType || 'product'} targetId={targetId} forceNew={forceNew} />;
   }
 
   // 处理进度页面
@@ -158,9 +175,10 @@ export default function Report() {
           ) : (
             <div className="space-y-3">
               {reports.slice(0, 3).map((report) => (
-                <div
+                <button
                   key={report.id}
-                  className="p-3 bg-gray-50 rounded-xl"
+                  onClick={() => navigate(`/report/detail?id=${report.id}`)}
+                  className="w-full p-3 bg-gray-50 rounded-xl text-left hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-gray-800">
@@ -173,10 +191,13 @@ export default function Report() {
                   <p className="text-xs text-gray-500 line-clamp-2 mb-2">
                     {report.description}
                   </p>
-                  <p className="text-xs text-gray-400">
-                    {formatRelativeTime(report.createdAt)}
-                  </p>
-                </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-400">
+                      {formatRelativeTime(report.createdAt)}
+                    </p>
+                    <ChevronRight className="w-4 h-4 text-gray-300" />
+                  </div>
+                </button>
               ))}
             </div>
           )}
@@ -283,10 +304,12 @@ function ReportSubmitPage({
   onBack,
   targetType,
   targetId,
+  forceNew = false,
 }: {
   onBack: () => void;
   targetType: ReportTargetType;
   targetId: string;
+  forceNew?: boolean;
 }) {
   const navigate = useNavigate();
   const { createReport } = useReportStore();
@@ -626,6 +649,118 @@ function ProgressPage({ onBack }: { onBack: () => void }) {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// 商品举报记录页面
+function ReportProductRecordsPage({
+  productId,
+  reports,
+  onBack,
+  onNewReport,
+}: {
+  productId: string;
+  reports: any[];
+  onBack: () => void;
+  onNewReport: () => void;
+}) {
+  const navigate = useNavigate();
+  const { getProductById } = useProductStore();
+  const product = getProductById(productId);
+
+  return (
+    <div className="min-h-screen bg-warm-50 pb-20 md:pb-0">
+      {/* 顶部导航 */}
+      <div className="sticky top-0 z-40 bg-white border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={onBack}
+            className="p-2 -ml-2 rounded-full hover:bg-gray-100"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="font-bold text-lg">该商品举报记录</h1>
+          <div className="w-10" />
+        </div>
+      </div>
+
+      <div className="container py-4 space-y-4">
+        {/* 关联商品卡片 */}
+        {product && (
+          <div
+            onClick={() => navigate(`/product/${product.id}`)}
+            className="bg-white rounded-2xl p-4 flex gap-3 hover:shadow-md transition-shadow cursor-pointer"
+          >
+            <img
+              src={product.images[0]}
+              alt={product.title}
+              className="w-20 h-20 rounded-lg object-cover bg-gray-100"
+            />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm text-gray-800 line-clamp-2 mb-1">
+                {product.title}
+              </h3>
+              <p className="text-primary-500 font-bold">
+                {formatPrice(product.price)}
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400 self-center" />
+          </div>
+        )}
+
+        {/* 提示 */}
+        <div className="bg-secondary-50 border border-secondary-200 rounded-xl p-4">
+          <p className="text-sm text-secondary-700">
+            您已对该商品提交过 {reports.length} 条举报，可查看处理进度或继续提交新举报
+          </p>
+        </div>
+
+        {/* 已有举报记录 */}
+        <div className="space-y-3">
+          <h2 className="font-medium text-gray-800 px-1">已提交的举报</h2>
+          {reports.map((report) => (
+            <button
+              key={report.id}
+              onClick={() => navigate(`/report/detail?id=${report.id}`)}
+              className="w-full bg-white rounded-2xl p-4 text-left hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-sm font-medium ${reportStatusColors[report.status]}`}>
+                  {reportStatusLabels[report.status]}
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                  {reportTypeLabels[report.type]}
+                </span>
+              </div>
+              <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                {report.description}
+              </p>
+              <p className="text-xs text-gray-400">
+                提交时间：{formatDateTime(report.createdAt)}
+              </p>
+            </button>
+          ))}
+        </div>
+
+        {/* 继续提交新举报按钮 */}
+        <button
+          onClick={onNewReport}
+          className="w-full bg-red-50 hover:bg-red-100 border border-red-200 rounded-2xl p-4 flex items-center gap-3 transition-colors"
+        >
+          <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+            <Plus className="w-6 h-6 text-red-500" />
+          </div>
+          <div className="text-left flex-1">
+            <h3 className="font-bold text-red-600">继续提交新举报</h3>
+            <p className="text-xs text-red-400">补充新的违规证据或问题</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-red-400" />
+        </button>
       </div>
     </div>
   );

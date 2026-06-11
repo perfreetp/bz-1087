@@ -253,7 +253,7 @@ export default function Profile() {
               icon={<Star className="w-6 h-6" />}
               label="待评价"
               count={myOrders.filter((o) => o.status === 'completed' && !o.isReviewed).length}
-              onClick={() => navigate('/orders?status=completed')}
+              onClick={() => navigate('/orders?status=completed&filter=unreviewed')}
             />
           </div>
         </div>

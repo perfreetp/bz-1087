@@ -33,8 +33,9 @@ export default function Orders() {
   const { getProductById } = useProductStore();
 
   const statusParam = searchParams.get('status');
-  const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>(
-    (statusParam as OrderStatus | 'all') || 'all'
+  const filterParam = searchParams.get('filter');
+  const [activeTab, setActiveTab] = useState<OrderStatus | 'all' | 'unreviewed'>(
+    filterParam === 'unreviewed' ? 'unreviewed' : ((statusParam as OrderStatus | 'all') || 'all')
   );
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -90,7 +91,10 @@ export default function Orders() {
   }
 
   // 订单列表
-  const orders = getOrders(activeTab === 'all' ? undefined : activeTab);
+  let orders = getOrders(activeTab === 'all' || activeTab === 'unreviewed' ? undefined : activeTab);
+  if (activeTab === 'unreviewed') {
+    orders = orders.filter((o: any) => o.status === 'completed' && !o.isReviewed);
+  }
 
   const tabs = [
     { key: 'all', label: '全部' },
@@ -100,10 +104,12 @@ export default function Orders() {
     { key: 'completed', label: '已完成' },
   ] as const;
 
-  const handleTabChange = (tab: OrderStatus | 'all') => {
+  const handleTabChange = (tab: OrderStatus | 'all' | 'unreviewed') => {
     setActiveTab(tab);
     if (tab === 'all') {
       navigate('/orders', { replace: true });
+    } else if (tab === 'unreviewed') {
+      navigate('/orders?status=completed&filter=unreviewed', { replace: true });
     } else {
       navigate(`/orders?status=${tab}`, { replace: true });
     }
@@ -179,7 +185,9 @@ export default function Orders() {
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="font-bold text-lg">我的订单</h1>
+          <h1 className="font-bold text-lg">
+            {activeTab === 'unreviewed' ? '待评价订单' : '我的订单'}
+          </h1>
           <div className="w-10" />
         </div>
 
@@ -222,7 +230,8 @@ export default function Orders() {
             {orders.map((order) => (
               <div
                 key={order.id}
-                className="bg-white rounded-2xl overflow-hidden"
+                onClick={() => navigate(`/orders/${order.id}`)}
+                className="bg-white rounded-2xl overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
               >
                 {/* 订单头部 */}
                 <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -235,10 +244,7 @@ export default function Orders() {
                 </div>
 
                 {/* 商品信息 */}
-                <Link
-                  to={`/product/${order.productId}`}
-                  className="flex gap-3 p-4 hover:bg-gray-50"
-                >
+                <div className="flex gap-3 p-4">
                   <img
                     src={order.productSnapshot.images[0]}
                     alt={order.productSnapshot.title}
@@ -257,7 +263,7 @@ export default function Orders() {
                       </span>
                     </div>
                   </div>
-                </Link>
+                </div>
 
                 {/* 订单金额 */}
                 <div className="px-4 py-2 text-right border-t">
@@ -268,7 +274,10 @@ export default function Orders() {
                 </div>
 
                 {/* 操作按钮 */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-gray-50">
+                <div
+                  className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-gray-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {order.status === 'pending_payment' && (
                     <>
                       <button
@@ -454,11 +463,11 @@ function OrderDetail({ order, onBack }: { order: any; onBack: () => void }) {
 
   const timeline = [
     { key: 'created', label: '下单成功', time: order.createdAt, icon: Clock, done: true },
-    { key: 'paid', label: '付款成功', time: order.paidAt, icon: CheckCircle, done: !!order.paidAt },
-    { key: 'shipped', label: '卖家发货', time: order.shippedAt, icon: Package, done: !!order.shippedAt },
-    { key: 'delivered', label: '确认收货', time: order.deliveredAt || order.completedAt, icon: MapPin, done: order.status === 'completed' || order.status === 'delivered' },
-    { key: 'reviewed', label: '完成评价', time: order.reviewedAt, icon: Star, done: !!order.isReviewed },
-  ].filter((item) => item.done);
+    { key: 'paid', label: '付款成功', time: order.paidAt, icon: CheckCircle, done: !!order.paidAt, status: '待付款' },
+    { key: 'shipped', label: '卖家发货', time: order.shippedAt, icon: Package, done: !!order.shippedAt, status: '待发货' },
+    { key: 'delivered', label: '确认收货', time: order.deliveredAt || order.completedAt, icon: MapPin, done: order.status === 'completed' || order.status === 'delivered', status: '待收货' },
+    { key: 'reviewed', label: '完成评价', time: order.reviewedAt, icon: Star, done: !!order.isReviewed, status: '待评价' },
+  ];
 
   return (
     <div className="min-h-screen bg-warm-50 pb-20">
@@ -519,36 +528,57 @@ function OrderDetail({ order, onBack }: { order: any; onBack: () => void }) {
             {timeline.map((item, index) => {
               const Icon = item.icon;
               const isLast = index === timeline.length - 1;
+              const isCurrent = item.done && (index === timeline.length - 1 || !timeline[index + 1].done);
               return (
                 <div key={item.key} className="relative flex gap-3">
                   <div className="flex flex-col items-center">
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isLast ? 'bg-primary-100' : 'bg-gray-100'
+                        isCurrent
+                          ? 'bg-primary-100'
+                          : item.done
+                          ? 'bg-gray-100'
+                          : 'bg-gray-50'
                       }`}
                     >
                       <Icon
                         className={`w-4 h-4 ${
-                          isLast ? 'text-primary-500' : 'text-gray-400'
+                          isCurrent
+                            ? 'text-primary-500'
+                            : item.done
+                            ? 'text-gray-400'
+                            : 'text-gray-300'
                         }`}
                       />
                     </div>
                     {!isLast && (
-                      <div className="w-0.5 flex-1 bg-gray-200 my-1" />
+                      <div
+                        className={`w-0.5 flex-1 my-1 ${
+                          item.done ? 'bg-primary-200' : 'bg-gray-100'
+                        }`}
+                      />
                     )}
                   </div>
                   <div className="flex-1 pb-2">
                     <p
                       className={`font-medium ${
-                        isLast ? 'text-gray-800' : 'text-gray-500'
+                        isCurrent
+                          ? 'text-gray-800'
+                          : item.done
+                          ? 'text-gray-500'
+                          : 'text-gray-300'
                       }`}
                     >
-                      {item.label}
+                      {item.done ? item.label : item.status || '待进行'}
                     </p>
-                    {item.time && (
+                    {item.time && item.done ? (
                       <p className="text-xs text-gray-400 mt-1">
                         {formatDateTime(item.time)}
                       </p>
+                    ) : (
+                      !item.done && (
+                        <p className="text-xs text-gray-300 mt-1">待进行</p>
+                      )
                     )}
                   </div>
                 </div>
