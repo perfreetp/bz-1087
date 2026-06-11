@@ -93,7 +93,10 @@ export default function ProductDetail() {
   };
 
   const submitOffer = () => {
-    if (!offerPrice || Number(offerPrice) <= 0) return;
+    const price = Number(offerPrice);
+    if (!offerPrice || price <= 0 || isNaN(price)) {
+      return;
+    }
     if (!seller) return;
     
     const chatId = createChat(
@@ -106,7 +109,11 @@ export default function ProductDetail() {
       seller.avatar
     );
     
+    const { sendOffer } = useChatStore.getState();
+    sendOffer(chatId, price);
+    
     setShowNegotiateModal(false);
+    setOfferPrice('');
     navigate(`/chat/${chatId}`);
   };
 
@@ -206,7 +213,7 @@ export default function ProductDetail() {
                   {product.recallInfo && <span>{product.recallInfo}</span>}
                 </p>
               </div>
-              <Link to="/report" className="text-xs text-red-600 underline">
+              <Link to={`/report/submit?type=product&id=${product.id}`} className="text-xs text-red-600 underline">
                 举报
               </Link>
             </div>
@@ -356,7 +363,7 @@ export default function ProductDetail() {
 
               {/* 举报按钮 */}
               <button
-                onClick={() => navigate(`/report?type=product&id=${product.id}`)}
+                onClick={() => navigate(`/report/submit?type=product&id=${product.id}`)}
                 className="w-full py-3 text-gray-500 text-sm flex items-center justify-center gap-1"
               >
                 <Flag className="w-4 h-4" />

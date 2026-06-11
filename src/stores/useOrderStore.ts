@@ -20,6 +20,8 @@ interface OrderState {
     tradeType: TradeType;
     address?: { name: string; phone: string; detail: string };
     pickupPoint?: { name: string; address: string; time?: string };
+    note?: string;
+    negotiatedPrice?: number;
   }) => string;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   payOrder: (orderId: string) => void;
@@ -78,6 +80,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       tradeType: params.tradeType,
       address: params.address,
       pickupPoint: params.pickupPoint,
+      note: params.note,
+      negotiatedPrice: params.negotiatedPrice,
       createdAt: new Date().toISOString(),
     };
 

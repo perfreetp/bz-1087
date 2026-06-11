@@ -15,12 +15,14 @@ import {
 } from 'lucide-react';
 import { useOrderStore } from '@/stores/useOrderStore';
 import { useProductStore } from '@/stores/useProductStore';
+import { useUserStore } from '@/stores/useUserStore';
 import {
   orderStatusLabels,
   orderStatusColors,
   tradeTypeLabels,
   type OrderStatus,
 } from '@/types';
+import { pickupPoints } from '@/data/reports';
 import { formatPrice, formatDateTime, formatDate } from '@/utils/format';
 
 export default function Orders() {
@@ -30,16 +32,46 @@ export default function Orders() {
   const { getOrders, getOrderById, payOrder, shipOrder, confirmReceive, cancelOrder, applyRefund } = useOrderStore();
   const { getProductById } = useProductStore();
 
-  const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
+  const statusParam = searchParams.get('status');
+  const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>(
+    (statusParam as OrderStatus | 'all') || 'all'
+  );
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<'pay' | 'confirm' | 'cancel' | 'refund'>('pay');
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewOrderId, setReviewOrderId] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewContent, setReviewContent] = useState('');
 
   const productId = searchParams.get('productId');
-  const isConfirmPage = searchParams.get('confirm') === '1' || productId;
+  const isConfirmPage = searchParams.get('confirm') === '1' || !!productId;
+
+  // 确认订单页（优先判断，避免与 id 参数冲突）
+  if (isConfirmPage && productId) {
+    const product = getProductById(productId);
+    if (!product) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-500 mb-4">商品不存在</p>
+            <button onClick={() => navigate('/')} className="text-primary-500">
+              返回首页
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <ConfirmOrder
+        product={product}
+        onBack={() => navigate(-1)}
+      />
+    );
+  }
 
   // 订单详情页
-  if (id) {
+  if (id && id !== 'confirm') {
     const order = getOrderById(id);
     if (!order) {
       return (
@@ -57,23 +89,6 @@ export default function Orders() {
     return <OrderDetail order={order} onBack={() => navigate('/orders')} />;
   }
 
-  // 确认订单页
-  if (isConfirmPage && productId) {
-    const product = getProductById(productId);
-    if (!product) {
-      return <div className="p-4">商品不存在</div>;
-    }
-    return (
-      <ConfirmOrder
-        product={product}
-        onBack={() => navigate(-1)}
-        onSubmit={() => {
-          navigate('/orders');
-        }}
-      />
-    );
-  }
-
   // 订单列表
   const orders = getOrders(activeTab === 'all' ? undefined : activeTab);
 
@@ -85,10 +100,50 @@ export default function Orders() {
     { key: 'completed', label: '已完成' },
   ] as const;
 
+  const handleTabChange = (tab: OrderStatus | 'all') => {
+    setActiveTab(tab);
+    if (tab === 'all') {
+      navigate('/orders', { replace: true });
+    } else {
+      navigate(`/orders?status=${tab}`, { replace: true });
+    }
+  };
+
   const handleAction = (orderId: string, type: 'pay' | 'confirm' | 'cancel' | 'refund') => {
     setSelectedOrderId(orderId);
     setActionType(type);
     setShowConfirmModal(true);
+  };
+
+  const handleReview = (orderId: string) => {
+    setReviewOrderId(orderId);
+    setReviewRating(5);
+    setReviewContent('');
+    setShowReviewModal(true);
+  };
+
+  const submitReview = () => {
+    if (!reviewOrderId) return;
+    if (!reviewContent.trim()) {
+      alert('请填写评价内容');
+      return;
+    }
+    
+    const { addReview } = useUserStore.getState();
+    const order = getOrderById(reviewOrderId);
+    
+    if (order) {
+      addReview({
+        targetUserId: order.sellerId,
+        orderId: order.id,
+        rating: reviewRating,
+        content: reviewContent.trim(),
+      });
+    }
+    
+    setShowReviewModal(false);
+    setReviewOrderId(null);
+    alert('评价提交成功！');
   };
 
   const confirmAction = () => {
@@ -133,7 +188,7 @@ export default function Orders() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => handleTabChange(tab.key as any)}
               className={`flex-shrink-0 px-4 py-3 text-sm font-medium relative ${
                 activeTab === tab.key
                   ? 'text-primary-500'
@@ -262,7 +317,10 @@ export default function Orders() {
                       >
                         申请退款
                       </button>
-                      <button className="px-4 py-1.5 bg-secondary-500 text-white rounded-full text-sm">
+                      <button
+                        onClick={() => handleReview(order.id)}
+                        className="px-4 py-1.5 bg-secondary-500 text-white rounded-full text-sm"
+                      >
                         去评价
                       </button>
                     </>
@@ -315,6 +373,66 @@ export default function Orders() {
                 className="flex-1 py-3 bg-primary-500 text-white rounded-full font-medium"
               >
                 确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 评价弹窗 */}
+      {showReviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowReviewModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl p-6 w-full max-w-sm animate-slide-up">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">发表评价</h3>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">评分</p>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setReviewRating(star)}
+                    className="p-1"
+                  >
+                    <Star
+                      className={`w-8 h-8 ${
+                        star <= reviewRating
+                          ? 'text-yellow-400 fill-current'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-sm text-gray-600 mb-2">评价内容</p>
+              <textarea
+                value={reviewContent}
+                onChange={(e) => setReviewContent(e.target.value)}
+                placeholder="分享您的交易体验..."
+                rows={4}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl resize-none focus:border-primary-400 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-full font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={submitReview}
+                className="flex-1 py-3 bg-primary-500 text-white rounded-full font-medium"
+              >
+                提交评价
               </button>
             </div>
           </div>
@@ -565,38 +683,54 @@ function OrderDetail({ order, onBack }: { order: any; onBack: () => void }) {
 function ConfirmOrder({
   product,
   onBack,
-  onSubmit,
 }: {
   product: any;
   onBack: () => void;
-  onSubmit: () => void;
 }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { createOrder } = useOrderStore();
+  const { getUserById } = useUserStore();
   const [tradeType, setTradeType] = useState<'shipping' | 'pickup'>('shipping');
+  const [selectedPickupPoint, setSelectedPickupPoint] = useState<string | null>(null);
   const [address, setAddress] = useState({
     name: '张女士',
     phone: '135****7890',
     detail: '北京市朝阳区某某小区1号楼1单元101室',
   });
   const [note, setNote] = useState('');
-  const navigate = useNavigate();
-  const { createOrder } = useOrderStore();
+
+  const seller = getUserById(product.sellerId);
+  const negotiatedPrice = searchParams.get('price');
+  const finalPrice = negotiatedPrice ? Number(negotiatedPrice) : product.price;
 
   const handleSubmit = () => {
-    const sellerId = product.sellerId;
+    if (tradeType === 'pickup' && !selectedPickupPoint) {
+      alert('请选择自提点');
+      return;
+    }
+
+    const pickupPoint = selectedPickupPoint
+      ? pickupPoints.find((p) => p.id === selectedPickupPoint)
+      : undefined;
+
     const orderId = createOrder({
       productId: product.id,
       productSnapshot: product,
-      sellerId,
-      sellerName: '卖家昵称',
-      sellerAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=seller',
-      price: product.price,
+      sellerId: product.sellerId,
+      sellerName: seller?.nickname || '卖家',
+      sellerAvatar: seller?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=seller',
+      price: finalPrice,
       originalPrice: product.originalPrice,
       tradeType,
       address: tradeType === 'shipping' ? address : undefined,
+      pickupPoint: pickupPoint
+        ? { name: pickupPoint.name, address: pickupPoint.address, time: pickupPoint.hours }
+        : undefined,
+      note,
     });
 
     navigate(`/orders/${orderId}`);
-    onSubmit();
   };
 
   return (
@@ -677,21 +811,32 @@ function ConfirmOrder({
           <div className="bg-white rounded-2xl p-4">
             <h3 className="font-medium text-gray-800 mb-3">选择自提点</h3>
             <div className="space-y-3">
-              {[
-                { name: '望京地铁站 A口', address: '北京市朝阳区地铁14号线望京站A口', distance: '1.5km' },
-                { name: '凯德MALL 服务台', address: '北京市朝阳区广顺北大街33号', distance: '2.0km' },
-              ].map((point, index) => (
-                <div
-                  key={index}
-                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl"
+              {pickupPoints.map((point) => (
+                <button
+                  key={point.id}
+                  onClick={() => setSelectedPickupPoint(point.id)}
+                  className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all ${
+                    selectedPickupPoint === point.id
+                      ? 'bg-primary-50 border-2 border-primary-500'
+                      : 'bg-gray-50 border-2 border-transparent'
+                  }`}
                 >
-                  <MapPin className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
+                  <div className="flex-shrink-0 mt-0.5">
+                    {selectedPickupPoint === point.id ? (
+                      <CheckCircle className="w-5 h-5 text-primary-500" />
+                    ) : (
+                      <MapPin className="w-5 h-5 text-green-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800">{point.name}</p>
                     <p className="text-sm text-gray-600 mt-0.5">{point.address}</p>
-                    <p className="text-xs text-green-600 mt-1">距您 {point.distance}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-green-600">距您 {point.distance}km</span>
+                      <span className="text-xs text-gray-400">{point.hours}</span>
+                    </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -710,9 +855,16 @@ function ConfirmOrder({
               <h4 className="text-sm text-gray-800 line-clamp-2">
                 {product.title}
               </h4>
-              <p className="text-primary-500 font-bold mt-2">
-                {formatPrice(product.price)}
-              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-primary-500 font-bold">
+                  {formatPrice(finalPrice)}
+                </span>
+                {negotiatedPrice && (
+                  <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded">
+                    议价价
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -721,15 +873,31 @@ function ConfirmOrder({
         <div className="bg-white rounded-2xl p-4">
           <h3 className="font-medium text-gray-800 mb-3">卖家信息</h3>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-200 rounded-full" />
+            <img
+              src={seller?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=seller'}
+              alt="卖家头像"
+              className="w-10 h-10 rounded-full bg-gray-200"
+            />
             <div className="flex-1">
-              <p className="font-medium text-gray-800">卖家</p>
+              <p className="font-medium text-gray-800">{seller?.nickname || '卖家'}</p>
               <div className="flex items-center gap-1 mt-0.5">
                 <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                <span className="text-xs text-gray-500">信用良好</span>
+                <span className="text-xs text-gray-500">
+                  信用分 {seller?.creditScore || 0}
+                </span>
               </div>
             </div>
-            <button className="text-sm text-primary-500">联系卖家</button>
+            <button
+              onClick={() => {
+                const chatId = searchParams.get('chatId');
+                if (chatId) {
+                  navigate(`/chat/${chatId}`);
+                }
+              }}
+              className="text-sm text-primary-500"
+            >
+              联系卖家
+            </button>
           </div>
         </div>
 
@@ -751,7 +919,7 @@ function ConfirmOrder({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">商品价格</span>
-              <span className="text-gray-700">{formatPrice(product.price)}</span>
+              <span className="text-gray-700">{formatPrice(finalPrice)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">运费</span>
@@ -762,7 +930,7 @@ function ConfirmOrder({
             <div className="flex justify-between pt-2 border-t">
               <span className="font-medium text-gray-800">实付款</span>
               <span className="text-lg font-bold text-primary-500">
-                {formatPrice(product.price)}
+                {formatPrice(finalPrice)}
               </span>
             </div>
           </div>
@@ -775,7 +943,7 @@ function ConfirmOrder({
           <div>
             <span className="text-sm text-gray-500">合计：</span>
             <span className="text-xl font-bold text-primary-500">
-              {formatPrice(product.price)}
+              {formatPrice(finalPrice)}
             </span>
           </div>
           <button

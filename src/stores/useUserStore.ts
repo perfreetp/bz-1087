@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { User, Review, WishlistItem } from '@/types';
 import { mockUsers, currentUserId, mockReviews, mockWishlist } from '@/data/users';
 import { getStorageItem, setStorageItem } from '@/utils/storage';
+import { useOrderStore } from './useOrderStore';
 
 interface UserState {
   currentUser: User | null;
@@ -15,6 +16,12 @@ interface UserState {
   addWishlistItem: (item: Omit<WishlistItem, 'id' | 'userId' | 'createdAt' | 'matchedProducts'>) => void;
   removeWishlistItem: (id: string) => void;
   updateUserProfile: (updates: Partial<User>) => void;
+  addReview: (params: {
+    targetUserId: string;
+    orderId: string;
+    rating: number;
+    content: string;
+  }) => void;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -78,6 +85,51 @@ export const useUserStore = create<UserState>((set, get) => ({
       );
       setStorageItem('currentUser', updatedUser);
       return { currentUser: updatedUser, users };
+    });
+  },
+
+  addReview: (params) => {
+    const currentUser = get().currentUser;
+    const { getOrderById } = useOrderStore.getState();
+    const order = getOrderById(params.orderId);
+
+    if (!currentUser || !order) return;
+
+    const newReview: Review = {
+      id: 'review-' + Date.now(),
+      orderId: params.orderId,
+      reviewerId: currentUser.id,
+      reviewerName: currentUser.nickname,
+      reviewerAvatar: currentUser.avatar,
+      revieweeId: params.targetUserId,
+      productId: order.productId,
+      productTitle: order.productSnapshot.title,
+      rating: params.rating,
+      content: params.content,
+      images: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    set((state) => {
+      const reviews = [newReview, ...state.reviews];
+      
+      const users = state.users.map((u) => {
+        if (u.id === params.targetUserId) {
+          const userReviews = reviews.filter((r) => r.revieweeId === u.id);
+          const avgRating = userReviews.length > 0
+            ? userReviews.reduce((sum, r) => sum + r.rating, 0) / userReviews.length
+            : 5;
+          return {
+            ...u,
+            reviewCount: u.reviewCount + 1,
+            creditScore: Math.min(100, Math.round(u.creditScore + (params.rating >= 4 ? 1 : -1))),
+          };
+        }
+        return u;
+      });
+
+      setStorageItem('reviews', reviews);
+      return { reviews, users };
     });
   },
 }));
